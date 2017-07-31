@@ -2,13 +2,12 @@
 # -*- coding:utf-8 -*-
 #A GAE web application to aggregate rss and send it to your kindle.
 #Visit https://github.com/cdhigh/KindleEar for the latest version
-#中文讨论贴：http://www.hi-pda.com/forum/viewthread.php?tid=1213082
 #Author:
 # cdhigh <https://github.com/cdhigh>
 #Contributors:
 # rexdf <https://github.com/rexdf>
 
-import web
+import web, zlib, base64
 import jinja2
 from apps.BaseHandler import BaseHandler
 from apps.dbModels import *
@@ -16,11 +15,10 @@ from apps.utils import InsertToc, local_time
 from lib.makeoeb import *
 
 from books.base import BaseUrlBook
-
-#import main
+from config import *
 
 class Url2Book(BaseHandler):
-    """ 抓取指定链接，转换成附件推送 """
+    #抓取指定链接，转换成附件推送
     __url__ = "/url2book"
     def GET(self):
         username = web.input().get("u")
@@ -34,7 +32,13 @@ class Url2Book(BaseHandler):
         if not all((username,urls,subject,to,language,booktype,tz)):
             return "Some parameter missing!<br />"
         
-        #global log
+        if (';' in to) or (',' in to):
+            to = to.replace(',', ';').replace(' ', '').split(';')
+        
+        if type(urls) is unicode:
+            urls = urls.encode('utf-8')
+            
+        urls = zlib.decompress(base64.urlsafe_b64decode(urls))
         
         if booktype == 'Download': #直接下载电子书并推送
             from lib.filedownload import Download
@@ -49,9 +53,20 @@ class Url2Book(BaseHandler):
                 else:
                     if not dlinfo:
                         dlinfo = 'download failed'
-                    self.deliverlog(username, to, filename, 0, status=dlinfo,tz=tz)
+                    self.deliverlog(username, str(to), filename, 0, status=dlinfo,tz=tz)
                 main.log.info("%s Sent!" % filename)
             return "%s Sent!" % filename
+        elif booktype == 'Debug': #调试目的，将链接直接下载，发送到管理员邮箱
+            from books.base import debug_fetch
+            #如果标题已经给定了文件名，则使用标题文件名，否则为默认文件名(page.html)
+            filename = None
+            if '.' in subject and (1 < len(subject.split('.')[-1]) < 5):
+                filename = subject
+
+            for url in urls.split('|'):
+                debug_fetch(url, filename)
+            main.log.info('[DEBUG] debug file sent!')
+            return 'Debug file sent!'
             
         user = KeUser.all().filter("name = ", username).get()
         if not user or not user.kindle_email:
@@ -100,12 +115,13 @@ class Url2Book(BaseHandler):
                 hasimage = True
             else:
                 if len(book.feeds) > 1:
-                    sections[subject].append((title,brief,thumbnail,content))
+                    sections[subject].append((title, brief, thumbnail, content))
                 else:
                     id, href = oeb.manifest.generate(id='page', href='page.html')
                     item = oeb.manifest.add(id, href, 'application/xhtml+xml', data=content)
                     oeb.spine.add(item, False)
                     oeb.toc.add(title, href)
+                    
                 itemcnt += 1
             
         if itemcnt > 0:
@@ -126,7 +142,7 @@ class Url2Book(BaseHandler):
             main.log.info(rs)
             return rs
         else:
-            self.deliverlog(username, to, book.title, 0, status='fetch failed',tz=tz)
+            self.deliverlog(username, str(to), book.title, 0, status='fetch failed',tz=tz)
             rs = "[Url2Book]Fetch url failed."
             main.log.info(rs)
             return rs

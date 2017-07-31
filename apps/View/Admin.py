@@ -2,7 +2,6 @@
 # -*- coding:utf-8 -*-
 #A GAE web application to aggregate rss and send it to your kindle.
 #Visit https://github.com/cdhigh/KindleEar for the latest version
-#中文讨论贴：http://www.hi-pda.com/forum/viewthread.php?tid=1213082
 #Contributors:
 # rexdf <https://github.com/rexdf>
 
@@ -12,13 +11,14 @@ import web
 
 from apps.BaseHandler import BaseHandler
 from apps.dbModels import *
-from apps.utils import new_secret_key
+from apps.utils import new_secret_key, etagged
 
 from config import *
 
 class Admin(BaseHandler):
     __url__ = "/admin"
     # 账户管理页面
+    @etagged()
     def GET(self):
         user = self.getcurrentuser()
         users = KeUser.all() if user.name == 'admin' else None
@@ -134,10 +134,17 @@ class DelAccount(BaseHandler):
                 tips = _("The username '%s' not exist!") % name
             else:
                 if u.ownfeeds:
-                    for feed in u.ownfeeds.feeds:
+                    for feed in list(u.ownfeeds.feeds):
                         feed.delete()
                     u.ownfeeds.delete()
-                u.delete()
+                    
+                #删掉白名单和过滤器
+                whitelists = list(u.whitelist)
+                urlfilters = list(u.urlfilter)
+                for d in whitelists:
+                    d.delete()
+                for d in urlfilters:
+                    d.delete()
                 
                 # 删掉订阅记录
                 for book in Book.all():
@@ -145,10 +152,15 @@ class DelAccount(BaseHandler):
                         book.users.remove(name)
                         book.put()
                 
+                #删掉推送记录
+                db.delete(DeliverLog.all().filter('username = ', name))
+                
                 #删掉书籍登陆信息
                 for subs_info in SubscriptionInfo.all().filter('user = ', u.key()):
                     subs_info.delete()
-                    
+                
+                u.delete()
+                
                 if main.session.username == name:
                     raise web.seeother('/logout')
                 else:

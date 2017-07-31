@@ -1,6 +1,7 @@
 #!usr/bin/Python
 # -*- coding:utf-8 -*-
 #将News feed生成的HTML文件转换成内存中的OEB格式
+#Author: cdhigh <https://github.com/cdhigh>
 import os, sys, uuid
 
 #这两个是必须先引入的，会有一些全局初始化
@@ -15,10 +16,12 @@ from config import *
 def MimeFromFilename(f):
     #从文件名生成MIME
     f = f.lower()
-    if f.endswith(('.gif','.png')):
-        return r"image/"+f[-3:]
-    elif f.endswith(('.jpg','.jpeg')):
-        return r"image/jpeg"
+    if f.endswith(('.gif', '.png', 'bmp')):
+        return r'image/' + f[-3:]
+    elif f.endswith(('.jpg', '.jpeg')):
+        return r'image/jpeg'
+    elif f.endswith('.tiff'):
+        return r'image/' + f[-4:]
     else:
         return ''
 
@@ -35,15 +38,14 @@ class ServerContainer(object):
         if path.endswith((".jpg",".png",".gif",".jpeg")) \
             and r'/' not in path:
             path = os.path.join("images", path)
-        d,f  = '',None
+
+        d = ''
         try:
-            f = open(path, "rb")
-            d = f.read()
-        except Exception,e:
-            self.log.warn("read file '%s' failed : %s" % (path,str(e)))
-        finally:
-            if f:
-                f.close()
+            with open(path, "rb") as f:
+                d = f.read()
+        except Exception as e:
+            self.log.warn("read file '%s' failed : %s" % (path, str(e)))
+        
         return d
     def write(self, path):
         return None
